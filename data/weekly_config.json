@@ -1,0 +1,7 @@
+{
+  "unlocked_modules": ["operations"],
+  "math_complexity_level": 1,
+  "market_volatility": "low",
+  "penalty_multiplier": 1.0,
+  "max_elapsed_days_per_action": 14.0
+}

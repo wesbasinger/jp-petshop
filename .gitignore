@@ -29,10 +29,9 @@ dist/
 *.egg-info/
 .eggs/
 
-# Local runtime state and generated student artifacts
-data/game_state.local.json
+# Local runtime state (per-machine; never shared via git)
+data/game_state.json
 data/assessment_session.json
-artifacts/*.local.json
 
 # IDE and operating-system files
 .vscode/

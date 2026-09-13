@@ -10,14 +10,24 @@ from pathlib import Path
 from engine.admin import load_demo_state, preview_week
 from engine.assessment import consume_session, create_session
 from engine.events import weekly_event
-from engine.math_engine import validate_answer
-from engine.state import GameState, load_state, save_state
+from engine.git_sync import GitSyncError, submit_artifacts, sync_content
+from engine.math_engine import accrue_debt_over_days, validate_answer
+from engine.state import (
+    GameState,
+    apply_weekly_config,
+    elapsed_days_since_last_action,
+    load_state,
+    mark_action_now,
+    save_state,
+)
 
 
 ROOT = Path(__file__).parent
 STATE_PATH = ROOT / "data" / "game_state.json"
 ARTIFACTS_PATH = ROOT / "artifacts"
 ASSESSMENT_SESSION_PATH = ROOT / "data" / "assessment_session.json"
+WEEKLY_CONFIG_PATH = ROOT / "data" / "weekly_config.json"
+DEBT_ANNUAL_RATE = 0.05
 
 
 def ask_number(prompt: str) -> float:
@@ -29,9 +39,15 @@ def ask_number(prompt: str) -> float:
 
 
 def run_turn(state: GameState) -> None:
-    event = weekly_event(state)
+    now = datetime.now(timezone.utc)
+    elapsed_days = elapsed_days_since_last_action(state, now)
+    if elapsed_days > 0:
+        state.debt = accrue_debt_over_days(state.debt, DEBT_ANNUAL_RATE, elapsed_days)
+    event = weekly_event(state, elapsed_days or 7.0)
     state.cash += event.cash_change
     print(f"\nWeek {state.week} dashboard")
+    if elapsed_days > 0:
+        print(f"{elapsed_days:.1f} real day(s) elapsed since your last turn; debt and market effects were scaled accordingly.")
     print(f"Cash: ${state.cash:,.2f} | Debt: ${state.debt:,.2f} | Reputation: {state.reputation}")
     print(f"Market event: {event.title} - {event.message}")
     print("Read docs/week_01_guide.md before entering your ledger answers.\n")
@@ -70,6 +86,7 @@ def run_turn(state: GameState) -> None:
         encoding="utf-8",
     )
     state.week += 1
+    mark_action_now(state, now)
     save_state(state, STATE_PATH)
     display_path = artifact_path.relative_to(ROOT) if artifact_path.is_relative_to(ROOT) else artifact_path
     print(f"Saved reflection to {display_path}")
@@ -131,12 +148,38 @@ def create_assessment() -> None:
     print(f"Share this one-time code with the student: {code}")
 
 
+def run_sync() -> None:
+    try:
+        message = sync_content(ROOT)
+    except GitSyncError as error:
+        print(f"Sync failed: {error}")
+        return
+    print(message)
+    state = load_state(STATE_PATH)
+    if apply_weekly_config(state, WEEKLY_CONFIG_PATH):
+        save_state(state, STATE_PATH)
+        print("Updated your unlocked modules and difficulty settings from the instructor.")
+
+
+def run_submit() -> None:
+    state = load_state(STATE_PATH)
+    message = f"Week {state.week} artifacts - {datetime.now(timezone.utc).isoformat()}"
+    try:
+        result = submit_artifacts(ROOT, message)
+    except GitSyncError as error:
+        print(f"Submit failed: {error}")
+        return
+    print(result)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Herp & Rodent Haven business simulation")
     parser.add_argument("--demo", action="store_true", help="open the instructor preview console")
     parser.add_argument("--admin", action="store_true", help="open the instructor console")
     parser.add_argument("--create-assessment", action="store_true", help="create a one-time supervised assessment code")
     parser.add_argument("--assessment", action="store_true", help="take the active supervised assessment")
+    parser.add_argument("--sync", action="store_true", help="pull the latest instructor content from git")
+    parser.add_argument("--submit", action="store_true", help="commit and push your artifacts/ folder to git")
     args = parser.parse_args()
     if args.demo or args.admin:
         run_admin(args.demo)
@@ -146,6 +189,12 @@ def main() -> None:
         return
     if args.assessment:
         run_assessment(load_state(STATE_PATH), input("Enter the instructor's assessment code: "))
+        return
+    if args.sync:
+        run_sync()
+        return
+    if args.submit:
+        run_submit()
         return
     run_turn(load_state(STATE_PATH))
 
