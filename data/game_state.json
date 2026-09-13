@@ -1,0 +1,12 @@
+{
+  "week": 1,
+  "cash": 5000.0,
+  "debt": 1200.0,
+  "reputation": 0,
+  "unlocked_modules": [
+    "operations"
+  ],
+  "math_complexity_level": 1,
+  "market_volatility": "low",
+  "penalty_multiplier": 1.0
+}

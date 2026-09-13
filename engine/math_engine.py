@@ -1,0 +1,26 @@
+"""Answer calculations and validation for the Week 1 lesson."""
+
+from __future__ import annotations
+
+import math
+
+
+WEEK_ONE_ANSWERS = {
+    "feed_cost": 135.0,
+    "loan_balance": 1261.39,
+    "population": 1105.17,
+    "price": 30.0,
+}
+
+
+def compound_balance(principal: float, annual_rate: float, compounds: int, years: float) -> float:
+    return principal * (1 + annual_rate / compounds) ** (compounds * years)
+
+
+def population_growth(initial: float, rate: float, weeks: float) -> float:
+    return initial * math.exp(rate * weeks)
+
+
+def validate_answer(task_key: str, answer: float, tolerance: float = 0.01) -> bool:
+    expected = WEEK_ONE_ANSWERS[task_key]
+    return math.isclose(answer, expected, rel_tol=0.0, abs_tol=tolerance)
