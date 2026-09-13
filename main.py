@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from engine import ui
 from engine.admin import load_demo_state, preview_week
 from engine.assessment import consume_session, create_session
 from engine.events import weekly_event
@@ -45,31 +46,41 @@ def run_turn(state: GameState) -> None:
         state.debt = accrue_debt_over_days(state.debt, DEBT_ANNUAL_RATE, elapsed_days)
     event = weekly_event(state, elapsed_days or 7.0)
     state.cash += event.cash_change
-    print(f"\nWeek {state.week} dashboard")
+
+    ui.heading(f"Week {state.week} Dashboard")
     if elapsed_days > 0:
-        print(f"{elapsed_days:.1f} real day(s) elapsed since your last turn; debt and market effects were scaled accordingly.")
-    print(f"Cash: ${state.cash:,.2f} | Debt: ${state.debt:,.2f} | Reputation: {state.reputation}")
-    print(f"Market event: {event.title} - {event.message}")
-    print("Read docs/week_01_guide.md before entering your ledger answers.\n")
+        ui.warn(f"{elapsed_days:.1f} real day(s) elapsed since your last turn; debt and market effects were scaled accordingly.")
+    ui.panel(
+        "Herp & Rodent Haven",
+        [
+            ("Cash", f"${state.cash:,.2f}"),
+            ("Debt", f"${state.debt:,.2f}"),
+            ("Reputation", str(state.reputation)),
+            ("Market event", f"{event.title} - {event.message}"),
+        ],
+    )
+    print(ui.dim("Read docs/week_01_guide.md before entering your ledger answers."))
 
     tasks = [
-        ("feed_cost", "Operations: 18 feeder orders cost $7.50 each. Total cost? "),
-        ("loan_balance", "Finance: $1,200 at 5% annual interest, compounded monthly for one year. Balance? "),
-        ("population", "Biology: 1,000 insects grow continuously at 2% per week for five weeks. Population? "),
-        ("price", "Market: Revenue is R(p) = -2p^2 + 120p. Price that maximizes revenue? "),
+        ("feed_cost", "Operations", "18 feeder orders cost $7.50 each. Total cost? "),
+        ("loan_balance", "Finance", "$1,200 at 5% annual interest, compounded monthly for one year. Balance? "),
+        ("population", "Biology", "1,000 insects grow continuously at 2% per week for five weeks. Population? "),
+        ("price", "Market", "Revenue is R(p) = -2p^2 + 120p. Price that maximizes revenue? "),
     ]
     correct = 0
-    for key, prompt in tasks:
+    for index, (key, category, prompt) in enumerate(tasks, start=1):
+        ui.step_progress(index, len(tasks), category)
         answer = ask_number(prompt)
         if validate_answer(key, answer):
             correct += 1
             state.reputation += 2
-            print("Correct. +2 reputation.")
+            ui.success("Correct. +2 reputation.")
         else:
             state.cash -= 10 * state.penalty_multiplier
-            print("Not quite. A $10 ledger correction was charged.")
+            ui.warn("Not quite. A $10 ledger correction was charged.")
 
-    reflection = input("Reflection: What will you monitor most closely next week, and why?\n> ")
+    ui.heading("Reflection")
+    reflection = input("What will you monitor most closely next week, and why?\n> ")
     ARTIFACTS_PATH.mkdir(parents=True, exist_ok=True)
     artifact_path = ARTIFACTS_PATH / f"week_{state.week:02d}_reflection.json"
     artifact_path.write_text(
@@ -89,8 +100,9 @@ def run_turn(state: GameState) -> None:
     mark_action_now(state, now)
     save_state(state, STATE_PATH)
     display_path = artifact_path.relative_to(ROOT) if artifact_path.is_relative_to(ROOT) else artifact_path
-    print(f"Saved reflection to {display_path}")
-    print(f"Turn complete. Reputation: {state.reputation}; Cash: ${state.cash:,.2f}")
+    ui.success(f"Saved reflection to {display_path}")
+    ui.heading("Turn Complete")
+    print(f"Reputation: {ui.bold(str(state.reputation))}  |  Cash: {ui.bold(f'${state.cash:,.2f}')}")
 
 
 def assessment_tasks() -> list[tuple[str, str]]:
@@ -104,8 +116,8 @@ def assessment_tasks() -> list[tuple[str, str]]:
 
 def run_assessment(state: GameState, code: str) -> None:
     session = consume_session(ASSESSMENT_SESSION_PATH, code, state.week)
-    print(f"\nSupervised assessment: Week {session.week}")
-    print("The instructor should remain present. No hints or correctness feedback will be shown.")
+    ui.heading(f"SUPERVISED ASSESSMENT - Week {session.week}")
+    ui.warn("Instructor must remain present. No hints or correctness feedback will be shown.")
     answers = [ask_number(prompt) for _, prompt in assessment_tasks()]
     correct = sum(validate_answer(key, answer) for (key, _), answer in zip(assessment_tasks(), answers))
     passed = correct >= 3
@@ -131,12 +143,13 @@ def run_assessment(state: GameState, code: str) -> None:
         state.assessment_passed_weeks.append(state.week)
         save_state(state, STATE_PATH)
     result = "passed" if passed else "not passed"
-    print(f"Assessment {result}: {correct}/{len(answers)}. The instructor can review the assessment artifact.")
+    ui.heading("Assessment Submitted")
+    print(f"Result: {ui.bold(result)} ({correct}/{len(answers)}). The instructor can review the assessment artifact.")
 
 
 def run_admin(demo: bool) -> None:
     state = load_demo_state(STATE_PATH) if demo else load_state(STATE_PATH)
-    print("Instructor Console")
+    ui.heading("Instructor Console")
     print(preview_week(1))
     print(f"Preview settings: complexity {state.math_complexity_level}, market {state.market_volatility}")
 
@@ -144,21 +157,21 @@ def run_admin(demo: bool) -> None:
 def create_assessment() -> None:
     state = load_state(STATE_PATH)
     code = create_session(ASSESSMENT_SESSION_PATH, state.week)
-    print(f"Created Week {state.week} supervised assessment.")
-    print(f"Share this one-time code with the student: {code}")
+    ui.success(f"Created Week {state.week} supervised assessment.")
+    print(f"Share this one-time code with the student: {ui.bold(code)}")
 
 
 def run_sync() -> None:
     try:
         message = sync_content(ROOT)
-    except GitSyncError as error:
-        print(f"Sync failed: {error}")
+    except GitSyncError as sync_error:
+        ui.error(f"Sync failed: {sync_error}")
         return
-    print(message)
+    ui.success(message)
     state = load_state(STATE_PATH)
     if apply_weekly_config(state, WEEKLY_CONFIG_PATH):
         save_state(state, STATE_PATH)
-        print("Updated your unlocked modules and difficulty settings from the instructor.")
+        ui.success("Updated your unlocked modules and difficulty settings from the instructor.")
 
 
 def run_submit() -> None:
@@ -166,10 +179,10 @@ def run_submit() -> None:
     message = f"Week {state.week} artifacts - {datetime.now(timezone.utc).isoformat()}"
     try:
         result = submit_artifacts(ROOT, message)
-    except GitSyncError as error:
-        print(f"Submit failed: {error}")
+    except GitSyncError as submit_error:
+        ui.error(f"Submit failed: {submit_error}")
         return
-    print(result)
+    ui.success(result)
 
 
 def main() -> None:

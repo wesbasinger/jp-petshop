@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 
 
-WEEK_ONE_ANSWERS = {
-    "feed_cost": 135.0,
-    "loan_balance": 1261.39,
-    "population": 1105.17,
-    "price": 30.0,
+# Answers are stored as hashes, not plaintext, so a student browsing the shared
+# repo can't read them directly. Comparison rounds to the cent before hashing.
+WEEK_ONE_ANSWER_HASHES = {
+    "feed_cost": "7bb9d03395c83bf7be72070a987605299c6d6538cfe025e1fa0a66c22ef8e340",
+    "loan_balance": "022612ce92580cdb62b5428f546558224baf9144293b3a7d86cebd7c647776b8",
+    "population": "3ae11572f0705d3161f936c86811c3e3940e74fa105d7d51f35d9e3bd01e8c48",
+    "price": "8ff79d510e90a5e4e2fa5ca3430d0cec2c6d64bd53d29ac5e46cb15d7cc43120",
 }
 
 
@@ -33,6 +36,9 @@ def population_growth_over_days(initial: float, weekly_rate: float, elapsed_days
     return population_growth(initial, weekly_rate, elapsed_days / 7)
 
 
-def validate_answer(task_key: str, answer: float, tolerance: float = 0.01) -> bool:
-    expected = WEEK_ONE_ANSWERS[task_key]
-    return math.isclose(answer, expected, rel_tol=0.0, abs_tol=tolerance)
+def _hash_answer(value: float) -> str:
+    return hashlib.sha256(f"{value:.2f}".encode("utf-8")).hexdigest()
+
+
+def validate_answer(task_key: str, answer: float) -> bool:
+    return _hash_answer(round(answer, 2)) == WEEK_ONE_ANSWER_HASHES[task_key]
