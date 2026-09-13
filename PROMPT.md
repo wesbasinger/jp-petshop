@@ -99,3 +99,12 @@ herp_and_rodent_haven/
 - Review artifacts and supervised assessment artifacts must remain separate.
 - Assessment unlock codes are one-time credentials created by Instructor Mode and stored only as hashes in local runtime state.
 - A passing supervised assessment can unlock official progression; review activity cannot.
+
+## 9. Future UI & Deployment Notes
+- Keep the CLI as a reliable development and fallback interface while the engine stabilizes.
+- A desktop-oriented wrapper should replace command flags with a clear mode menu: Review, Supervised Assessment, and Instructor Console.
+- Use comfortable spacing, larger readable text, and clear dashboard panels so a student can scan cash, debt, reputation, active week, and available actions without feeling crowded.
+- Add restrained progress feedback when moving between tasks, such as a brief dot-advancing or step-progress animation. Motion should communicate state changes, not delay the learner.
+- Make the supervised assessment screen visually distinct from review mode, with an explicit instructor-present status and no accidental hints or answer feedback.
+- Preserve the same engine APIs and artifact boundaries beneath any desktop, Streamlit, or future web UI.
+- Deployment planning should include local-first operation, a reset/demo profile, backup and export of assessment artifacts, and protection of active student state from instructor previews.
