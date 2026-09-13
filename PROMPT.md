@@ -14,6 +14,12 @@ Develop a text-based Python business simulation designed for a high school senio
   - Allows the instructor to preview any week’s tasks, review accompanying documentation, simulate student entries, and manually unlock or adjust parameters without corrupting the student's active `game_state.json`.
 - **Source Privacy:** Math formulas, secret event probabilities, and validation rules are stored in compiled/backend modules so the student cannot inspect answers directly.
 
+### Interaction Trust Levels
+- **Review Mode:** Students may use field guides, hints, retries, and AI assistance. Review responses are practice artifacts and do not count as verified assessment evidence.
+- **Supervised Assessment Mode:** An instructor creates a one-time unlock code and shares it with the student during an in-person session. The assessment provides no hints or correctness feedback and records a separate assessment artifact. Official module progression may require a passing supervised assessment.
+- **Instructor Mode:** The instructor can preview lessons, create assessment sessions, inspect artifacts, and adjust parameters without changing the student's active state.
+- Software cannot prove that a student used no outside help. Supervised mode is an auditable protocol that depends on the instructor being physically present.
+
 ---
 
 ## 3. Module Gating & Dynamic Difficulty Tuning
@@ -70,7 +76,8 @@ herp_and_rodent_haven/
 │   ├── week_01_guide.md
 │   └── week_02_guide.md
 ├── artifacts/                 # Saved student qualitative responses for AI analysis
-│   └── week_01_reflection.json
+│   ├── review/                # Practice responses and reflections
+│   └── assessments/           # One-time, supervised assessment records
 ├── engine/
 │   ├── __init__.py
 │   ├── state.py               # Handles game_state.json read/write & difficulty tuning
@@ -87,3 +94,8 @@ herp_and_rodent_haven/
 4. **Artifact Generation:** Qualitative answers are exported to `artifacts/`.
 5. **Validation & Feedback:** Numerical answers are checked against `math_engine.py`. Correct answers award reputation points and cash; errors generate hint prompts and minor penalties.
 6. **State Persistence:** `game_state.json` updates automatically.
+
+### Assessment Boundary
+- Review artifacts and supervised assessment artifacts must remain separate.
+- Assessment unlock codes are one-time credentials created by Instructor Mode and stored only as hashes in local runtime state.
+- A passing supervised assessment can unlock official progression; review activity cannot.

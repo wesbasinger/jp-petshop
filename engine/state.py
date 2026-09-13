@@ -18,6 +18,7 @@ class GameState:
     math_complexity_level: int = 1
     market_volatility: str = "low"
     penalty_multiplier: float = 1.0
+    assessment_passed_weeks: list[int] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GameState":

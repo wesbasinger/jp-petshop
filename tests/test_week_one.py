@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from engine.math_engine import compound_balance, population_growth, validate_answer
+from engine.assessment import consume_session, create_session
 from engine.state import GameState, load_state, save_state
 
 
@@ -27,6 +28,23 @@ class StatePersistenceTests(unittest.TestCase):
             restored = load_state(path)
             self.assertEqual(restored.to_dict(), original.to_dict())
             self.assertEqual(json.loads(path.read_text())["cash"], 4321.5)
+
+
+class AssessmentSessionTests(unittest.TestCase):
+    def test_code_is_one_time(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "assessment.json"
+            code = create_session(path, week=1)
+            consume_session(path, code, week=1)
+            with self.assertRaises(ValueError):
+                consume_session(path, code, week=1)
+
+    def test_wrong_code_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "assessment.json"
+            create_session(path, week=1)
+            with self.assertRaises(ValueError):
+                consume_session(path, "WRONG-CODE", week=1)
 
 
 if __name__ == "__main__":
