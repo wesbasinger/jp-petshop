@@ -25,6 +25,8 @@ class GameState:
     # Safety valve: caps how many real days of accrual a single turn can apply,
     # so a save left untouched for a long break doesn't compound unrealistically.
     max_elapsed_days_per_action: float = 14.0
+    # Feeder insect colony size; grows in the background with real elapsed time.
+    feeder_population: float = 1000.0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "GameState":

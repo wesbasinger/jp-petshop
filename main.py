@@ -12,7 +12,12 @@ from engine.admin import load_demo_state, preview_week
 from engine.assessment import consume_session, create_session
 from engine.events import weekly_event
 from engine.git_sync import GitSyncError, submit_artifacts, sync_content
-from engine.math_engine import accrue_debt_over_days, validate_answer
+from engine.math_engine import (
+    accrue_debt_over_days,
+    compound_balance,
+    population_growth_over_days,
+    validate_answer,
+)
 from engine.state import (
     GameState,
     apply_weekly_config,
@@ -29,6 +34,11 @@ ARTIFACTS_PATH = ROOT / "artifacts"
 ASSESSMENT_SESSION_PATH = ROOT / "data" / "assessment_session.json"
 WEEKLY_CONFIG_PATH = ROOT / "data" / "weekly_config.json"
 DEBT_ANNUAL_RATE = 0.05
+FEEDER_GROWTH_RATE = 0.02  # weekly continuous growth rate for the background feeder colony
+LOAN_OFFERS = [
+    {"name": "Credit Union (5% APR, 1 year)", "annual_rate": 0.05, "term_years": 1.0},
+    {"name": "Fast Advance (8% APR, 6 months)", "annual_rate": 0.08, "term_years": 0.5},
+]
 
 
 def ask_number(prompt: str) -> float:
@@ -39,46 +49,89 @@ def ask_number(prompt: str) -> float:
             print("Please enter a number, such as 135 or 1260.60.")
 
 
-def run_turn(state: GameState) -> None:
-    now = datetime.now(timezone.utc)
-    elapsed_days = elapsed_days_since_last_action(state, now)
-    if elapsed_days > 0:
-        state.debt = accrue_debt_over_days(state.debt, DEBT_ANNUAL_RATE, elapsed_days)
-    event = weekly_event(state, elapsed_days or 7.0)
-    state.cash += event.cash_change
-
+def show_dashboard(state: GameState, event, elapsed_days: float) -> None:
     ui.heading(f"Week {state.week} Dashboard")
     if elapsed_days > 0:
-        ui.warn(f"{elapsed_days:.1f} real day(s) elapsed since your last turn; debt and market effects were scaled accordingly.")
+        ui.warn(f"{elapsed_days:.1f} real day(s) elapsed since your last turn; debt, market, and population were scaled accordingly.")
     ui.panel(
         "Herp & Rodent Haven",
         [
             ("Cash", f"${state.cash:,.2f}"),
             ("Debt", f"${state.debt:,.2f}"),
             ("Reputation", str(state.reputation)),
+            ("Feeder colony", f"{state.feeder_population:,.0f}"),
             ("Market event", f"{event.title} - {event.message}"),
         ],
     )
-    print(ui.dim("Read docs/week_01_guide.md before entering your ledger answers."))
+    print(ui.dim("Read docs/week_01_guide.md for the formulas behind this week's actions."))
 
-    tasks = [
-        ("feed_cost", "Operations", "18 feeder orders cost $7.50 each. Total cost? "),
-        ("loan_balance", "Finance", "$1,200 at 5% annual interest, compounded monthly for one year. Balance? "),
-        ("population", "Biology", "1,000 insects grow continuously at 2% per week for five weeks. Population? "),
-        ("price", "Market", "Revenue is R(p) = -2p^2 + 120p. Price that maximizes revenue? "),
-    ]
-    correct = 0
-    for index, (key, category, prompt) in enumerate(tasks, start=1):
-        ui.step_progress(index, len(tasks), category)
-        answer = ask_number(prompt)
-        if validate_answer(key, answer):
-            correct += 1
-            state.reputation += 2
-            ui.success("Correct. +2 reputation.")
-        else:
-            state.cash -= 10 * state.penalty_multiplier
-            ui.warn("Not quite. A $10 ledger correction was charged.")
 
+def operations_action(state: GameState, session: dict) -> None:
+    ui.heading("Operations: Feeder Supply Order")
+    answer = ask_number("18 feeder orders cost $7.50 each. Total cost? ")
+    if validate_answer("feed_cost", answer):
+        session["correct"] += 1
+        state.reputation += 2
+        ui.success("Correct. +2 reputation.")
+    else:
+        state.cash -= 10 * state.penalty_multiplier
+        ui.warn("Not quite. A $10 ledger correction was charged.")
+
+
+def finance_action(state: GameState, session: dict) -> None:
+    ui.heading("Finance: Loan Decision")
+    print(f"Current debt: ${state.debt:,.2f}\n")
+    for index, offer in enumerate(LOAN_OFFERS, start=1):
+        projected = compound_balance(state.debt, offer["annual_rate"], 12, offer["term_years"])
+        print(f"{index}) {offer['name']} -> projected balance ${projected:,.2f}")
+    print("3) Skip refinancing this week")
+
+    answer = ask_number("\nLedger check: $1,200 at 5% annual interest, compounded monthly for one year. Balance? ")
+    if validate_answer("loan_balance", answer):
+        session["correct"] += 1
+        state.reputation += 2
+        ui.success("Correct. +2 reputation.")
+    else:
+        ui.warn("Not quite, but you can still choose an offer below.")
+
+    choice = input("Which offer do you want to take (1/2/3)? ").strip()
+    if choice in ("1", "2"):
+        offer = LOAN_OFFERS[int(choice) - 1]
+        state.debt = compound_balance(state.debt, offer["annual_rate"], 12, offer["term_years"])
+        ui.success(f"Took '{offer['name']}'. New debt balance: ${state.debt:,.2f}")
+    else:
+        ui.warn("Skipped refinancing. Your debt keeps accruing at the standard rate.")
+
+
+def biology_action(state: GameState, session: dict) -> None:
+    ui.heading("Biology: Population Forecast")
+    print(f"Your feeder colony is currently {state.feeder_population:,.0f} insects (it grows on its own between turns).\n")
+    answer = ask_number("Textbook check: 1,000 insects grow continuously at 2% per week for five weeks. Population? ")
+    if validate_answer("population", answer):
+        session["correct"] += 1
+        state.reputation += 2
+        ui.success("Correct. +2 reputation.")
+    else:
+        ui.warn("Not quite. Review the growth formula in the field guide.")
+
+
+def market_action(state: GameState, session: dict) -> None:
+    ui.heading("Market: Set This Week's Price")
+    print("Revenue follows R(p) = -2p^2 + 120p.\n")
+    price = ask_number("What price do you want to set this week? ")
+    revenue = -2 * price**2 + 120 * price
+    state.cash += revenue
+    if validate_answer("price", price):
+        session["correct"] += 1
+        state.reputation += 2
+        ui.success(f"That's the revenue-maximizing price. Revenue: ${revenue:,.2f}.")
+    elif revenue >= 0:
+        ui.warn(f"Not the optimal price, but it still brought in ${revenue:,.2f} in revenue.")
+    else:
+        ui.error(f"That price actually lost you ${-revenue:,.2f} in revenue.")
+
+
+def reflection_action(state: GameState, session: dict) -> bool:
     ui.heading("Reflection")
     reflection = input("What will you monitor most closely next week, and why?\n> ")
     ARTIFACTS_PATH.mkdir(parents=True, exist_ok=True)
@@ -89,19 +142,59 @@ def run_turn(state: GameState) -> None:
                 "week": state.week,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "reflection": reflection,
-                "correct_answers": correct,
+                "correct_answers": session["correct"],
             },
             indent=2,
         )
         + "\n",
         encoding="utf-8",
     )
+    display_path = artifact_path.relative_to(ROOT) if artifact_path.is_relative_to(ROOT) else artifact_path
+    ui.success(f"Saved reflection to {display_path}")
+    return True
+
+
+def run_turn(state: GameState) -> None:
+    now = datetime.now(timezone.utc)
+    elapsed_days = elapsed_days_since_last_action(state, now)
+    if elapsed_days > 0:
+        state.debt = accrue_debt_over_days(state.debt, DEBT_ANNUAL_RATE, elapsed_days)
+        state.feeder_population = population_growth_over_days(state.feeder_population, FEEDER_GROWTH_RATE, elapsed_days)
+    event = weekly_event(state, elapsed_days or 7.0)
+    state.cash += event.cash_change
+
+    session = {"correct": 0}
+    reflection_saved = False
+    menu = {
+        "1": ("Operations - feeder supply order", operations_action),
+        "2": ("Finance - review and choose a loan offer", finance_action),
+        "3": ("Biology - population growth forecast", biology_action),
+        "4": ("Market - set this week's price", market_action),
+    }
+    while True:
+        show_dashboard(state, event, elapsed_days)
+        ui.heading("This Week's Actions")
+        for key, (label, _) in menu.items():
+            print(f"{key}) {label}")
+        print(f"5) Reflection{' (done)' if reflection_saved else ''}")
+        print("0) End the week and save")
+        choice = input("\nChoose an action: ").strip()
+        if choice in menu:
+            menu[choice][1](state, session)
+        elif choice == "5":
+            reflection_saved = reflection_action(state, session) or reflection_saved
+        elif choice == "0":
+            if not reflection_saved:
+                ui.warn("Write your reflection (option 5) before ending the week.")
+                continue
+            break
+        else:
+            ui.warn("Enter a number from the menu.")
+
     state.week += 1
     mark_action_now(state, now)
     save_state(state, STATE_PATH)
-    display_path = artifact_path.relative_to(ROOT) if artifact_path.is_relative_to(ROOT) else artifact_path
-    ui.success(f"Saved reflection to {display_path}")
-    ui.heading("Turn Complete")
+    ui.heading("Week Complete")
     print(f"Reputation: {ui.bold(str(state.reputation))}  |  Cash: {ui.bold(f'${state.cash:,.2f}')}")
 
 
